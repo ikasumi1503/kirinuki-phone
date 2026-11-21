@@ -1,0 +1,101 @@
+/* 縦スワイプで見るプレイヤー（shorts-view.js）。拡張とスマホのページで同じものを使う */
+html.sv-page, html.sv-page body { margin: 0; height: 100%; background: #000; color: #fff; font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif; }
+.sv [hidden] { display: none !important; }
+.sv {
+  --sv-ease: cubic-bezier(.2, .8, .2, 1);
+  color: #fff; position: fixed; inset: 0; overflow-y: scroll; scroll-snap-type: y mandatory; overscroll-behavior: contain;
+  scrollbar-width: none; background: #000; -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.sv::-webkit-scrollbar { display: none; }
+.sv svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- 1 本 ---- */
+.sv-slide { position: relative; height: 100vh; height: 100dvh; scroll-snap-align: start; scroll-snap-stop: always; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; }
+.sv-slide video { height: 100%; max-width: 100%; object-fit: contain; background: #000; }
+/* 見るときにきれいにした絵（動画のちょうど上に重ねる。触っても下の動画に届く） */
+.sv-slide canvas.sv-enhance { position: absolute; pointer-events: none; }
+.sv-state { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center; padding: 24px; color: #ddd; font-size: 15px; line-height: 1.6; z-index: 2; }
+.sv-why { font-size: 13px; color: #ffb0aa; max-width: 360px; }
+.sv-action { background: #fff; color: #000; border: 0; border-radius: 18px; padding: 9px 18px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.sv-empty { height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px; color: #ccc; line-height: 1.8; }
+
+/* 読み込み中のくるくる */
+.sv-spin { position: absolute; width: 42px; height: 42px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .2); border-top-color: #fff; animation: sv-spin .8s linear infinite; pointer-events: none; }
+@keyframes sv-spin { to { transform: rotate(360deg); } }
+
+/* 止めたときの大きな再生マーク */
+.sv-big { position: absolute; width: 76px; height: 76px; padding: 20px 18px 20px 24px; border-radius: 50%; background: rgba(0, 0, 0, .45); backdrop-filter: blur(6px); color: #fff; pointer-events: none; animation: sv-pop .25s var(--sv-ease); }
+@keyframes sv-pop { from { transform: scale(.6); opacity: 0; } }
+
+/* 左右ダブルタップの「10 秒」 */
+.sv-seek { position: absolute; top: 50%; transform: translateY(-50%); padding: 10px 16px; border-radius: 999px; background: rgba(0, 0, 0, .5); font-weight: 700; font-size: 15px; opacity: 0; pointer-events: none; }
+.sv-seek.left { left: 8%; }
+.sv-seek.right { right: 8%; }
+.sv-seek.show { animation: sv-seek .7s var(--sv-ease); }
+@keyframes sv-seek { 0% { opacity: 0; transform: translateY(-50%) scale(.8); } 25% { opacity: 1; transform: translateY(-50%) scale(1); } 100% { opacity: 0; } }
+
+/* 名前 */
+.sv-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 70px 76px calc(54px + env(safe-area-inset-bottom)) 16px; background: linear-gradient(transparent, rgba(0, 0, 0, .78)); pointer-events: none; }
+.sv-title { font-weight: 700; font-size: 15px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-shadow: 0 1px 4px rgba(0, 0, 0, .6); }
+/* AI で高画質にした版を流しているときの札 */
+.sv-ai-chip { display: inline-block; margin-bottom: 6px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #a78bfa, #7c3aed); box-shadow: 0 2px 8px rgba(124, 58, 237, .45); }
+/* 輪郭くっきりのボタン（三角のアイコン） */
+.sv-enhance-btn { padding: 12px; }
+.sv-sub { font-size: 12px; color: #ccc; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- 下の再生バー（触る所は太く） ---- */
+.sv-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 16px calc(10px + env(safe-area-inset-bottom)); touch-action: none; cursor: pointer; z-index: 3; }
+.sv-track { position: relative; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .25); transition: height .15s; }
+.sv-buf { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; background: rgba(255, 255, 255, .35); }
+.sv-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; background: #ff3b30; }
+.sv-knob { position: absolute; top: 50%; left: 0; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); transform: scale(0); transition: transform .15s var(--sv-ease); }
+.sv-times { margin-top: 6px; font-size: 12px; color: rgba(255, 255, 255, .85); font-variant-numeric: tabular-nums; height: 16px; text-shadow: 0 1px 3px rgba(0, 0, 0, .7); opacity: 0; transition: opacity .2s; }
+.sv-tip { position: absolute; bottom: calc(34px + env(safe-area-inset-bottom)); transform: translateX(-50%); margin-left: 16px; background: rgba(0, 0, 0, .75); padding: 3px 8px; border-radius: 6px; font-size: 12px; font-variant-numeric: tabular-nums; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.sv-bar:hover .sv-track, .sv-slide.scrubbing .sv-track, .sv-slide.paused .sv-track { height: 6px; }
+.sv-bar:hover .sv-knob, .sv-slide.scrubbing .sv-knob, .sv-slide.paused .sv-knob, .sv-touch .sv-knob { transform: scale(1); }
+.sv-bar:hover .sv-tip, .sv-slide.scrubbing .sv-tip { opacity: 1; }
+.sv-ui .sv-times, .sv-slide.paused .sv-times, .sv-slide.scrubbing .sv-times, .sv-touch .sv-times { opacity: 1; }
+.sv-slide.scrubbing .sv-cap { opacity: .3; }
+
+/* ---- 右の操作ボタン ---- */
+.sv-rail { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 4; display: flex; flex-direction: column; gap: 10px; transition: opacity .25s; }
+.sv-btn {
+  width: 46px; height: 46px; padding: 11px; border-radius: 50%; border: 0; cursor: pointer; color: #fff; font: 700 13px system-ui, sans-serif;
+  background: rgba(0, 0, 0, .45); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0, 0, 0, .35); transition: background .15s, transform .12s, opacity .15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.sv-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .22); }
+.sv-btn:active:not(:disabled) { transform: scale(.9); }
+.sv-btn:disabled { opacity: .3; cursor: default; }
+.sv-btn.on { background: rgba(255, 59, 48, .85); }
+.sv-speed { padding: 0; }
+/* PC は、マウスを止めると隠す（動かすと出る）。スマホはいつも出す。上下の矢印は PC だけ */
+.sv:not(.sv-touch):not(.sv-ui) .sv-rail, .sv:not(.sv-touch):not(.sv-ui) .sv-counter { opacity: 0; pointer-events: none; }
+.sv:not(.sv-touch):not(.sv-ui) { cursor: none; }
+.sv-touch .sv-up, .sv-touch .sv-down { display: none; }
+
+/* 何本目 */
+.sv-counter { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 4; padding: 4px 12px; border-radius: 999px; background: rgba(0, 0, 0, .45); backdrop-filter: blur(6px); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; transition: opacity .25s; }
+
+/* 一言の知らせ（音あり・速さなど） */
+.sv-flash { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5; padding: 10px 18px; border-radius: 12px; background: rgba(0, 0, 0, .7); font-weight: 700; font-size: 15px; pointer-events: none; }
+.sv-flash.show { animation: sv-flash 1.3s var(--sv-ease) forwards; }
+@keyframes sv-flash { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.9); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* はじめての使い方 */
+/* 幅は中身に合わせる（left: 50% だけだと、画面の半分の幅で折り返して「次の動 / 画」のように割れる） */
+.sv-hint { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; width: max-content; max-width: calc(100vw - 32px); background: rgba(0, 0, 0, .78); backdrop-filter: blur(8px); padding: 18px 24px; border-radius: 16px; text-align: center; line-height: 2; font-size: 14px; animation: sv-pop .3s var(--sv-ease); transition: opacity .5s; cursor: pointer; }
+.sv-hint.out { opacity: 0; }
+
+/* ---- 上の「閉じる」など（ページが置く） ---- */
+.sv-top[hidden] { display: none; } /* 下の display: flex に負けないように（ログイン前のスマホのページで ↻ が出ていた） */
+.sv-top { position: fixed; z-index: 4; top: calc(12px + env(safe-area-inset-top)); left: 12px; display: flex; gap: 8px; transition: opacity .25s; }
+.sv-top button, .sv-top a { background: rgba(0, 0, 0, .5); color: #fff; border: 1px solid rgba(255, 255, 255, .25); border-radius: 18px; padding: 8px 14px; font-size: 13px; cursor: pointer; text-decoration: none; font-family: inherit; backdrop-filter: blur(6px); }
+
+@media (max-width: 520px) {
+  .sv-btn { width: 44px; height: 44px; }
+  .sv-rail { right: 8px; top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sv *, .sv *::before, .sv *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
